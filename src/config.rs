@@ -1,6 +1,7 @@
 use std::collections::HashSet;
 use std::path::Path;
 
+use regex::Regex;
 use serde::Deserialize;
 
 use crate::error::{AppError, Result};
@@ -105,10 +106,31 @@ pub struct DebugConfig {
     pub capture_dir: String,
 }
 
+/// Expand `$VAR` and `${VAR}` placeholders in `s` using `resolve`.
+/// Unresolved variables are replaced with an empty string, matching the
+/// behaviour of `os.ExpandEnv` in the Go sibling project.
+fn expand_env_vars_with(s: &str, resolve: impl Fn(&str) -> Option<String>) -> String {
+    let re = Regex::new(r"\$\{([^}]+)\}|\$([A-Za-z_][A-Za-z0-9_]*)").unwrap();
+    re.replace_all(s, |caps: &regex::Captures| {
+        let name = caps
+            .get(1)
+            .or_else(|| caps.get(2))
+            .map(|m| m.as_str())
+            .unwrap_or("");
+        resolve(name).unwrap_or_default()
+    })
+    .into_owned()
+}
+
+fn expand_env_vars(s: &str) -> String {
+    expand_env_vars_with(s, |name| std::env::var(name).ok())
+}
+
 impl Config {
     pub fn load(path: impl AsRef<Path>) -> Result<Self> {
         let raw = std::fs::read_to_string(path.as_ref())?;
-        let cfg: Config = serde_yaml::from_str(&raw)?;
+        let expanded = expand_env_vars(&raw);
+        let cfg: Config = serde_yaml::from_str(&expanded)?;
         cfg.validate()?;
         Ok(cfg)
     }
@@ -317,5 +339,63 @@ ampcode:
         let yaml = "port: 8317\napi-keys: [\"x\"]\n";
         let cfg: Config = serde_yaml::from_str(yaml).unwrap();
         assert!(cfg.ampcode.restrict_management_to_localhost);
+    }
+
+    // ── env-var expansion ────────────────────────────────────────────────────
+
+    fn resolve(name: &str) -> Option<String> {
+        match name {
+            "MY_KEY"      => Some("secret-key".into()),
+            "MY_URL"      => Some("https://example.com".into()),
+            "MY_PORT"     => Some("9000".into()),
+            _             => None,
+        }
+    }
+
+    #[test]
+    fn expand_replaces_dollar_brace_syntax() {
+        let out = expand_env_vars_with("key: ${MY_KEY}", resolve);
+        assert_eq!(out, "key: secret-key");
+    }
+
+    #[test]
+    fn expand_replaces_bare_dollar_syntax() {
+        let out = expand_env_vars_with("key: $MY_KEY", resolve);
+        assert_eq!(out, "key: secret-key");
+    }
+
+    #[test]
+    fn expand_unresolved_becomes_empty_string() {
+        let out = expand_env_vars_with("key: ${MISSING_VAR_XYZ}", resolve);
+        assert_eq!(out, "key: ");
+    }
+
+    #[test]
+    fn expand_multiple_vars_in_one_string() {
+        let out = expand_env_vars_with("url: ${MY_URL} key: ${MY_KEY}", resolve);
+        assert_eq!(out, "url: https://example.com key: secret-key");
+    }
+
+    #[test]
+    fn expand_leaves_plain_text_untouched() {
+        let out = expand_env_vars_with("nothing here", resolve);
+        assert_eq!(out, "nothing here");
+    }
+
+    #[test]
+    fn load_expands_env_vars_in_yaml() {
+        let yaml = r#"port: ${MY_PORT}
+api-keys:
+  - "${MY_KEY}"
+ampcode:
+  upstream-url: "${MY_URL}"
+"#;
+        // Parse via expand_env_vars_with so we don't need to set real env vars
+        let expanded = expand_env_vars_with(yaml, resolve);
+        let cfg: Config = serde_yaml::from_str(&expanded).unwrap();
+        cfg.validate().unwrap();
+        assert_eq!(cfg.port, 9000);
+        assert_eq!(cfg.api_keys, vec!["secret-key"]);
+        assert_eq!(cfg.ampcode.upstream_url, "https://example.com");
     }
 }

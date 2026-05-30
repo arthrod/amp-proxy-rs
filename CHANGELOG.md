@@ -6,6 +6,18 @@ versioning follows [SemVer](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.3.2] - 2026-05-30
+
+### Added
+
+- **Env-var substitution in config** — all string values in `config.yaml` now
+  support `${VAR}` and `$VAR` expansion at load time using the `regex` crate.
+  Unresolved variables expand to an empty string (matching `os.ExpandEnv`
+  semantics). Allows secrets to be injected via the environment without
+  embedding them in the config file.
+- Seven new unit tests for env-var expansion covering both syntaxes, multiple
+  variables in one string, unresolved variables, and plain-text passthrough.
+
 ## [0.3.1] - 2026-04-27
 
 ### Fixed

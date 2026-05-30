@@ -36,6 +36,44 @@ jobs:
       - name: Run tests
         run: cargo test --all-features --no-fail-fast
 
+  # Example job: how to inject routing config via GitHub secrets.
+  # Uncomment and adapt when deploying amp-proxy from CI.
+  #
+  # deploy:
+  #   runs-on: ubuntu-latest
+  #   steps:
+  #     - uses: actions/checkout@v4
+  #     - name: Write config from secrets
+  #       env:
+  #         AMP_LOCAL_KEY:         ${{ secrets.AMP_LOCAL_KEY }}
+  #         AMP_UPSTREAM_API_KEY:  ${{ secrets.AMP_UPSTREAM_API_KEY }}
+  #         CUSTOM_PROVIDER_URL:   ${{ secrets.CUSTOM_PROVIDER_URL }}
+  #         CUSTOM_PROVIDER_KEY:   ${{ secrets.CUSTOM_PROVIDER_KEY }}
+  #       run: |
+  #         cat > config.yaml <<'EOF'
+  #         host: "0.0.0.0"
+  #         port: 8787
+  #         api-keys:
+  #           - "${AMP_LOCAL_KEY}"
+  #         ampcode:
+  #           upstream-url: "https://ampcode.com"
+  #           upstream-api-key: "${AMP_UPSTREAM_API_KEY}"
+  #           restrict-management-to-localhost: false
+  #           force-model-mappings: true
+  #           model-mappings:
+  #             - from: "claude-opus-4-6"
+  #               to: "gpt-5.4(high)"
+  #           custom-providers:
+  #             - name: "my-gateway"
+  #               url: "${CUSTOM_PROVIDER_URL}"
+  #               api-key: "${CUSTOM_PROVIDER_KEY}"
+  #               models:
+  #                 - "gpt-5.4(high)"
+  #           gemini-route-mode: "translate"
+  #         EOF
+  #     - name: Build and run
+  #       run: cargo build --release && ./target/release/amp-proxy --config config.yaml
+
   build:
     name: Build (${{ matrix.os }})
     runs-on: ${{ matrix.os }}

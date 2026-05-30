@@ -35,4 +35,4 @@ upstream codebase:
   the explicit `BILLABLE` warning emitted by the ampcode.com fallback
   proxy.
 
-Copyright (c) 2026 margbug01. Released under MIT.
+Copyright (c) 2026 arthrod. Released under MIT.

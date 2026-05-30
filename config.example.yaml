@@ -6,6 +6,14 @@ port: 8787
 
 # API keys that local clients must present to the proxy
 # (this is the LOCAL proxy auth, NOT the Amp upstream API key)
+# Values support ${ENV_VAR} and $ENV_VAR substitution at load time.
+# Unresolved variables are replaced with an empty string.
+# This lets you keep secrets out of the file and inject them via the
+# environment (shell, systemd EnvironmentFile, Docker --env-file,
+# GitHub Actions secrets, etc.).
+#
+# Example: api-keys:
+#            - "${AMP_LOCAL_KEY}"
 api-keys:
   - "change-me-local-key"
 
@@ -14,7 +22,8 @@ ampcode:
   # Base URL of the Amp control plane
   upstream-url: "https://ampcode.com"
 
-  # Default API key forwarded to ampcode.com (or empty to use per-client keys)
+  # Default API key forwarded to ampcode.com (or empty to use per-client keys).
+  # You can inject this from the environment: upstream-api-key: "${AMP_UPSTREAM_API_KEY}"
   upstream-api-key: ""
 
   # Per-client upstream API key routing (optional)
