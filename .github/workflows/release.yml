@@ -10,29 +10,43 @@ permissions:
 
 jobs:
   build:
-    name: build (${{ matrix.os }})
+    name: build (${{ matrix.target }})
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
       matrix:
         include:
+          # Fully static Linux binary via musl — runs on any Linux distro
+          # without glibc version requirements.
           - os: ubuntu-latest
-            target: x86_64-unknown-linux-gnu
+            target: x86_64-unknown-linux-musl
             archive: amp-proxy-x86_64-linux.tar.gz
             bin: amp-proxy
+            musl: true
+
           - os: macos-latest
             target: x86_64-apple-darwin
             archive: amp-proxy-x86_64-macos.tar.gz
             bin: amp-proxy
+            musl: false
+
           - os: windows-latest
             target: x86_64-pc-windows-msvc
             archive: amp-proxy-x86_64-windows.zip
             bin: amp-proxy.exe
+            musl: false
 
     steps:
       - uses: actions/checkout@v4
 
-      - uses: dtolnay/rust-toolchain@stable
+      - name: Install musl tools (Linux only)
+        if: matrix.musl
+        run: sudo apt-get install -y musl-tools
+
+      - name: Install Rust toolchain + target
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
 
       - name: Cache cargo registry + target
         uses: actions/cache@v4
@@ -41,18 +55,18 @@ jobs:
             ~/.cargo/registry
             ~/.cargo/git
             target
-          key: cargo-release-${{ matrix.os }}-${{ hashFiles('Cargo.lock', 'Cargo.toml') }}
+          key: cargo-release-${{ matrix.target }}-${{ hashFiles('Cargo.lock', 'Cargo.toml') }}
 
       - run: cargo --version && rustc --version
 
       - name: Build
-        run: cargo build --release --locked
+        run: cargo build --release --locked --target ${{ matrix.target }}
 
       - name: Package (Linux / macOS)
         if: runner.os != 'Windows'
         run: |
           mkdir -p dist
-          cp target/release/${{ matrix.bin }} dist/
+          cp target/${{ matrix.target }}/release/${{ matrix.bin }} dist/
           cp LICENSE NOTICE.md README.md CHANGELOG.md dist/
           cp config.example.yaml dist/
           tar -czf ${{ matrix.archive }} -C dist .
@@ -63,7 +77,7 @@ jobs:
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Force -Path dist | Out-Null
-          Copy-Item target/release/${{ matrix.bin }} dist/
+          Copy-Item target/${{ matrix.target }}/release/${{ matrix.bin }} dist/
           Copy-Item LICENSE, NOTICE.md, README.md, CHANGELOG.md, config.example.yaml dist/
           Compress-Archive -Path dist/* -DestinationPath ${{ matrix.archive }}
           $hash = (Get-FileHash -Algorithm SHA256 ${{ matrix.archive }}).Hash.ToLower()
@@ -75,11 +89,9 @@ jobs:
           files: |
             ${{ matrix.archive }}
             ${{ matrix.archive }}.sha256
-          # generate_release_notes intentionally disabled here — when the
-          # matrix runs in parallel, three concurrent jobs would each
-          # regenerate-and-append notes, producing duplicates. The release
-          # body should be set once via `gh release edit` after all builds
-          # finish (or in a separate single-run job).
+          # generate_release_notes disabled: parallel matrix jobs would each
+          # regenerate notes, producing duplicates. Set the release body once
+          # via `gh release edit` after all builds finish.
           generate_release_notes: false
           fail_on_unmatched_files: true
         env:
