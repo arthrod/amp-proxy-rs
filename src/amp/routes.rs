@@ -689,14 +689,15 @@ mod tests {
 
     #[tokio::test]
     async fn peek_prefix_falls_back_to_full_buffer_when_model_at_end() {
-        let h = {
-            let _g = SERIALISE_TESTS.lock().unwrap_or_else(|e| e.into_inner());
-            let cfg = cfg(vec![provider("gw", &["gpt-5.4"])], vec![]);
-            customproxy::global()
-                .configure(&cfg.custom_providers)
-                .expect("configure registry");
-            FallbackHandler::new(&cfg).expect("new handler")
-        };
+        // Hold the serialisation lock for the entire test, not just setup.
+        // The global registry is shared; releasing the lock early lets other
+        // tests reconfigure it before our decide() calls complete.
+        let _g = SERIALISE_TESTS.lock().unwrap_or_else(|e| e.into_inner());
+        let cfg = cfg(vec![provider("gw", &["gpt-5.4"])], vec![]);
+        customproxy::global()
+            .configure(&cfg.custom_providers)
+            .expect("configure registry");
+        let h = FallbackHandler::new(&cfg).expect("new handler");
 
         // Build a body whose `model` field lives well past PEEK_LIMIT. We
         // use a very long string field preceding the model field. The JSON
